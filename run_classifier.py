@@ -58,7 +58,7 @@ flags.DEFINE_string(
     "Initial checkpoint (usually from a pre-trained BERT model).")
 
 flags.DEFINE_bool(
-    "do_lower_case", True,
+    "do_lower_case", False,
     "Whether to lower case the input text. Should be True for uncased "
     "models and False for cased models.")
 
@@ -653,9 +653,17 @@ def model_fn_builder(bert_config, num_labels, init_checkpoint, learning_rate,
         accuracy = tf.metrics.accuracy(
             labels=label_ids, predictions=predictions, weights=is_real_example)
         loss = tf.metrics.mean(values=per_example_loss, weights=is_real_example)
+
+        precision = tf.metrics.precision(labels=label_ids, predictions=predictions, weights=is_real_example)
+        recall = tf.metrics.recall(labels=label_ods, predictions=predictions, weights=is_real_example)
+        fmeasure = (2*precision*recall)/(precision+recall)
         return {
             "eval_accuracy": accuracy,
             "eval_loss": loss,
+            "precision": precision,
+            "recall": recall,
+            "fmeasure": fmeasure,
+            
         }
 
       eval_metrics = (metric_fn,
