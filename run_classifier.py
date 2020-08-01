@@ -655,7 +655,7 @@ def model_fn_builder(bert_config, num_labels, init_checkpoint, learning_rate,
         loss = tf.metrics.mean(values=per_example_loss, weights=is_real_example)
 
         precision = tf.metrics.precision(labels=label_ids, predictions=predictions, weights=is_real_example)
-        recall = tf.metrics.recall(labels=label_ods, predictions=predictions, weights=is_real_example)
+        recall = tf.metrics.recall(labels=label_ids, predictions=predictions, weights=is_real_example)
         fmeasure = (2*precision*recall)/(precision+recall)
         return {
             "eval_accuracy": accuracy,
