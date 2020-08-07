@@ -566,21 +566,23 @@ def create_model(bert_config, is_training, input_ids, input_mask, segment_ids,
     if is_training:
         output_layer = tf.nn.dropout(output_layer, rate=0.2)
 
-   output_weights_gr = tf.get_variable("output_weights_gr", [2,genitiveratio.get_shape()[1]], initializer=tf.truncated_normal_initializer(stddev=0.02))
-
+    output_weights_gr = tf.get_variable("output_weights_gr", [3,genitiveratio.get_shape()[1]], initializer=tf.truncated_normal_initializer(stddev=0.02))
+    print("output_weights_gr",output_weights_gr)
     output_bias_gr = tf.get_variable(
-      "output_bias_gr", [2], initializer=tf.zeros_initializer())
-
+      "output_bias_gr", [3], initializer=tf.zeros_initializer())
+    print("output_biase_gr",output_bias_gr)
 
 
     logits_gr = tf.matmul(genitiveratio, output_weights_gr, transpose_b=True)
+    print(logits_gr)
     logits_gr = tf.nn.bias_add(logits_gr, output_bias_gr)
-
+    print(logits_gr)
  
 
     output_weights_gr1 = tf.get_variable("output_weights_gr1", [6,logits_gr.get_shape()[1]], initializer=tf.truncated_normal_initializer(stddev=0.02))
+    print("output_weights_gr1",output_weights_gr)
     output_bias_gr1 = tf.get_variable("output_bias_gr1",[6], initializer=tf.zeros_initializer())
-
+    print("output_bias_gr1",output_bias_gr1)
 
 
     logits_gr1 = tf.matmul(logits_gr, output_weights_gr1, transpose_b=True)
@@ -588,27 +590,40 @@ def create_model(bert_config, is_training, input_ids, input_mask, segment_ids,
 
 
 
-    output_weights_gr2 = tf.get_variable("output_weights_gr2", [6,logits_gr1.get_shape()[1]], initializer=tf.truncated_normal_initializer(stddev=0.02))
+    output_weights_gr2 = tf.get_variable("output_weights_gr2", [8,logits_gr1.get_shape()[1]], initializer=tf.truncated_normal_initializer(stddev=0.02))
+    print("output_weights_gr2",output_weights_gr2)
     output_bias_gr2 = tf.get_variable(
-      "output_bias_gr2", [6], initializer=tf.zeros_initializer())
-
+      "output_bias_gr2", [8], initializer=tf.zeros_initializer())
+    print("output_bias_gr2",output_bias_gr2)
   
 
-    logits_gr2 = tf.matmul(logits_gr1, output_weights_gr2, transpose_b=True)
-    logits_gr2 = tf.nn.bias_add(logits_gr2, output_bias_gr2)
+    logits_gr2a = tf.matmul(logits_gr1, output_weights_gr2, transpose_b=True)
+    logits_gr2a = tf.nn.bias_add(logits_gr2a, output_bias_gr2)
+ #  print(logits_gr2)
 
+    output_weights_gr2a = tf.get_variable("output_weights_gr2a", [6,logits_gr2a.get_shape()[1]], initializer=tf.truncated_normal_initializer(stddev=0.02))
+    print("output_weights_gr2a",output_weights_gr2a)
+    output_bias_gr2a = tf.get_variable(
+      "output_bias_gr2a", [6], initializer=tf.zeros_initializer())
+    print("output_bias_gr2a",output_bias_gr2a)
+  
+
+    logits_gr2 = tf.matmul(logits_gr2a, output_weights_gr2a, transpose_b=True)
+    logits_gr2 = tf.nn.bias_add(logits_gr2, output_bias_gr2a)
+    print(logits_gr2a)
 
 
     output_weights_gr3 = tf.get_variable(
-      "output_weights_gr3", [num_labels, logits_gr2.get_shape()[1]],
+      "output_weights_gr3", [3, logits_gr2.get_shape()[1]],
       initializer=tf.truncated_normal_initializer(stddev=0.02))
+    print("output_weights_gr3",output_weights_gr3)
     output_bias_gr3 = tf.get_variable(
-      "output_bias_gr3", [2], initializer=tf.zeros_initializer())
+      "output_bias_gr3", [3], initializer=tf.zeros_initializer())
   
 
     logits_gr3 = tf.nn.bias_add(tf.matmul(logits_gr2, output_weights_gr3, transpose_b=True), output_bias_gr3)
     print("obg3",logits_gr3)
-
+   
 
     hidden_size = output_layer.shape[-1].value
 
@@ -619,20 +634,21 @@ def create_model(bert_config, is_training, input_ids, input_mask, segment_ids,
 
   
     output_bias = tf.get_variable(
-      "output_bias", [2], initializer=tf.zeros_initializer())
+      "output_bias", [num_labels], initializer=tf.zeros_initializer())
 
     logits = tf.matmul(output_layer, output_weights, transpose_b=True)
     logits = tf.nn.bias_add(logits, output_bias)
     print("logits is",logits)
+    print(num_labels)
 
     logitsconc = tf.concat([logits, logits_gr3],-1)
     print("logitsconc is",logitsconc)
   
-    output_grconc_w = tf.get_variable("out_w", [2,4], initializer=tf.truncated_normal_initializer(stddev=0.02))
-    output_grconc_bias = tf.get_variable("out_w_bias",[2], initializer=tf.zeros_initializer())
+    output_grconc_w = tf.get_variable("out_w", [3,6], initializer=tf.truncated_normal_initializer(stddev=0.02))
+    output_grconc_bias = tf.get_variable("out_w_bias",[3], initializer=tf.zeros_initializer())
 
     logits = tf.nn.bias_add(tf.matmul(logitsconc,output_grconc_w,transpose_b=True),output_grconc_bias)
-
+    print("logits end is",logits)
 
     probabilities = tf.nn.softmax(logits, axis=-1)
     log_probs = tf.nn.log_softmax(logits, axis=-1)
@@ -645,7 +661,7 @@ def create_model(bert_config, is_training, input_ids, input_mask, segment_ids,
     per_example_lw = tf.reduce_sum(class_weights * one_hot_labels, axis=1) 
  #   print("*** per_example_lw ***", per_example_lw)
     loss = tf.reduce_mean(per_example_loss* per_example_lw)
-
+#    loss = tf.reduce_mean(per_example_loss)
     return (loss, per_example_loss, logits, probabilities)
 
 
@@ -819,6 +835,7 @@ def main(_):
   processor = processors[task_name]()
 
   label_list = processor.get_labels()
+  print("**************** LABEL LIST IS **********", label_list)
 
   tokenizer = tokenization.FullTokenizer(
       vocab_file=FLAGS.vocab_file, do_lower_case=FLAGS.do_lower_case)
