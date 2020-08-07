@@ -18,6 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+#from sklearn.metrics import classification_report
 import collections
 import csv
 import os
@@ -25,7 +26,11 @@ import modeling
 import optimization
 import tokenization
 import tensorflow as tf
+from tensorflow.estimator import BaselineClassifier
 import ast
+import numpy as np
+
+
 
 flags = tf.flags
 
@@ -87,8 +92,11 @@ flags.DEFINE_float("learning_rate", 5e-5, "The initial learning rate for Adam.")
 flags.DEFINE_float("num_train_epochs", 3.0,
                    "Total number of training epochs to perform.")
 
+flags.DEFINE_integer("fine_tune_layers", 12, "How many layers we want to fine-tune") 
+
+
 flags.DEFINE_float(
-    "warmup_proportion", 0.1,
+    "warmup_proportion", 0.0,
     "Proportion of training to perform linear learning rate warmup for. "
     "E.g., 0.1 = 10% of training.")
 
@@ -145,6 +153,7 @@ class InputExample(object):
     self.text_b = text_b
     self.label = label
     self.genitive_id = genitive_id
+
 
 
 class PaddingInputExample(object):
@@ -222,12 +231,33 @@ class StoriesProcessor(DataProcessor):
 
   def get_test_examples(self, data_dir):
     """See base class."""
-    return self._create_examples(
+    return self._create_test_examples(
         self._read_tsv(os.path.join(data_dir, "test.tsv")), "test")
 
   def get_labels(self):
     """See base class."""
-    return ["0", "1"]
+    return ["1", "2", "3"]
+
+
+  def _create_test_examples(self, lines, set_type):
+    """Creates examples for the training and dev sets."""
+    examples = []
+    for (i, line) in enumerate(lines):
+      if i == 0:
+        continue
+      guid = "%s-%s" % (set_type, i)
+      text_a = tokenization.convert_to_unicode(line[3])
+      gr = [float(x) for x in ast.literal_eval(line[1])]
+          
+      # set_type == "test":
+      label = "3"
+      #else:
+      actuallabel = tokenization.convert_to_unicode(line[2])
+      examples.append(
+          InputExample(guid=guid, text_a=text_a,label=label, genitive_id=gr))
+    return examples,actuallabel
+
+
 
 
   def _create_examples(self, lines, set_type):
@@ -237,12 +267,12 @@ class StoriesProcessor(DataProcessor):
       if i == 0:
         continue
       guid = "%s-%s" % (set_type, i)
-      text_a = tokenization.convert_to_unicode(line[0])
+      text_a = tokenization.convert_to_unicode(line[3])
       gr = [float(x) for x in ast.literal_eval(line[1])]
     
       
       if set_type == "test":
-        label = "0"
+        label = "3"
       else:
         label = tokenization.convert_to_unicode(line[2])
       examples.append(
@@ -532,56 +562,96 @@ def create_model(bert_config, is_training, input_ids, input_mask, segment_ids,
   output_layer = model.get_pooled_output()
   print("output_layer", output_layer)
 
-  hidden_size = output_layer.shape[-1].value
+  with tf.variable_scope("loss"):
+    if is_training:
+        output_layer = tf.nn.dropout(output_layer, rate=0.2)
 
-  output_weights = tf.get_variable(
+   output_weights_gr = tf.get_variable("output_weights_gr", [2,genitiveratio.get_shape()[1]], initializer=tf.truncated_normal_initializer(stddev=0.02))
+
+    output_bias_gr = tf.get_variable(
+      "output_bias_gr", [2], initializer=tf.zeros_initializer())
+
+
+
+    logits_gr = tf.matmul(genitiveratio, output_weights_gr, transpose_b=True)
+    logits_gr = tf.nn.bias_add(logits_gr, output_bias_gr)
+
+ 
+
+    output_weights_gr1 = tf.get_variable("output_weights_gr1", [6,logits_gr.get_shape()[1]], initializer=tf.truncated_normal_initializer(stddev=0.02))
+    output_bias_gr1 = tf.get_variable("output_bias_gr1",[6], initializer=tf.zeros_initializer())
+
+
+
+    logits_gr1 = tf.matmul(logits_gr, output_weights_gr1, transpose_b=True)
+    logits_gr1 = tf.nn.bias_add(logits_gr1, output_bias_gr1)
+
+
+
+    output_weights_gr2 = tf.get_variable("output_weights_gr2", [6,logits_gr1.get_shape()[1]], initializer=tf.truncated_normal_initializer(stddev=0.02))
+    output_bias_gr2 = tf.get_variable(
+      "output_bias_gr2", [6], initializer=tf.zeros_initializer())
+
+  
+
+    logits_gr2 = tf.matmul(logits_gr1, output_weights_gr2, transpose_b=True)
+    logits_gr2 = tf.nn.bias_add(logits_gr2, output_bias_gr2)
+
+
+
+    output_weights_gr3 = tf.get_variable(
+      "output_weights_gr3", [num_labels, logits_gr2.get_shape()[1]],
+      initializer=tf.truncated_normal_initializer(stddev=0.02))
+    output_bias_gr3 = tf.get_variable(
+      "output_bias_gr3", [2], initializer=tf.zeros_initializer())
+  
+
+    logits_gr3 = tf.nn.bias_add(tf.matmul(logits_gr2, output_weights_gr3, transpose_b=True), output_bias_gr3)
+    print("obg3",logits_gr3)
+
+
+    hidden_size = output_layer.shape[-1].value
+
+
+    output_weights = tf.get_variable(
       "output_weights", [num_labels, hidden_size],
       initializer=tf.truncated_normal_initializer(stddev=0.02))
 
-  output_weights_gr = tf.get_variable("output_weights_gr", [num_labels,genitiveratio.get_shape()[1]], initializer=tf.truncated_normal_initializer(stddev=0.02))
-
   
-  output_bias = tf.get_variable(
-      "output_bias", [4], initializer=tf.zeros_initializer())
-
-  with tf.variable_scope("loss"):
-    if is_training:
-      # I.e., 0.1 dropout
-      output_layer = tf.nn.dropout(output_layer, keep_prob=0.9)
+    output_bias = tf.get_variable(
+      "output_bias", [2], initializer=tf.zeros_initializer())
 
     logits = tf.matmul(output_layer, output_weights, transpose_b=True)
-    logits_gr = tf.matmul(genitiveratio, output_weights_gr, transpose_b=True)
+    logits = tf.nn.bias_add(logits, output_bias)
+    print("logits is",logits)
+
+    logitsconc = tf.concat([logits, logits_gr3],-1)
+    print("logitsconc is",logitsconc)
+  
+    output_grconc_w = tf.get_variable("out_w", [2,4], initializer=tf.truncated_normal_initializer(stddev=0.02))
+    output_grconc_bias = tf.get_variable("out_w_bias",[2], initializer=tf.zeros_initializer())
+
+    logits = tf.nn.bias_add(tf.matmul(logitsconc,output_grconc_w,transpose_b=True),output_grconc_bias)
+
+
+    probabilities = tf.nn.softmax(logits, axis=-1)
+    log_probs = tf.nn.log_softmax(logits, axis=-1)
     
-    logitsconc_pre = tf.concat([logits,logits_gr],-1)
-    logitsconc_pre = tf.nn.bias_add(logitsconc_pre, output_bias)
-
-
-    logicweightdec = tf.get_variable("dec_logic",[2,4],initializer=tf.truncated_normal_initializer(stddev=0.02))
- #   print("logitweight",logicweightdec)
-
-    logitbias = tf.get_variable("logic_bias",[2], initializer=tf.zeros_initializer())
-#    print(logitbias)
-    logitsconc = tf.matmul(logitsconc_pre, logicweightdec, transpose_b=True)
-    logitsconc= tf.nn.bias_add(logitsconc, logitbias)
-
-  #  print(logitsconc)
-
-
-    probabilities = tf.nn.softmax(logitsconc, axis=-1)
-
-    log_probs = tf.nn.log_softmax(logitsconc, axis=-1)
-
     one_hot_labels = tf.one_hot(labels, depth=num_labels, dtype=tf.float32)
-
+    
+    class_weights = tf.constant([[4.17,2.17,1]])
     per_example_loss = -tf.reduce_sum(one_hot_labels * log_probs, axis=-1)
-    loss = tf.reduce_mean(per_example_loss)
+#    print("*** per_example_loss ***", per_example_loss)    
+    per_example_lw = tf.reduce_sum(class_weights * one_hot_labels, axis=1) 
+ #   print("*** per_example_lw ***", per_example_lw)
+    loss = tf.reduce_mean(per_example_loss* per_example_lw)
 
-    return (loss, per_example_loss, logitsconc, probabilities)
+    return (loss, per_example_loss, logits, probabilities)
 
 
 def model_fn_builder(bert_config, num_labels, init_checkpoint, learning_rate,
                      num_train_steps, num_warmup_steps, use_tpu,
-                     use_one_hot_embeddings):
+                     use_one_hot_embeddings,ft):
   """Returns `model_fn` closure for TPUEstimator."""
 
   def model_fn(features, labels, mode, params):  # pylint: disable=unused-argument
@@ -613,6 +683,21 @@ def model_fn_builder(bert_config, num_labels, init_checkpoint, learning_rate,
 
     tvars = tf.trainable_variables()
     initialized_variable_names = {}
+   
+#    print("tvars is", tvars)
+#    trainable_layers = []
+
+ #   print("ft is",ft)
+ #   for i in range(ft):
+  #      xxi = 11 - i
+   #     stringi = 'encoder/layer_' + str(xxi)
+    #    trainable_layers.append(stringi)
+        
+
+#    print("trainable layers",trainable_layers)   
+
+#    tvars = [var for var in tvars if any([l in var.name for l in trainable_layers])]
+
     scaffold_fn = None
     if init_checkpoint:
       (assignment_map, initialized_variable_names
@@ -654,17 +739,16 @@ def model_fn_builder(bert_config, num_labels, init_checkpoint, learning_rate,
             labels=label_ids, predictions=predictions, weights=is_real_example)
         loss = tf.metrics.mean(values=per_example_loss, weights=is_real_example)
 
-        precision = tf.metrics.precision(labels=label_ids, predictions=predictions, weights=is_real_example)
-        recall = tf.metrics.recall(labels=label_ids, predictions=predictions, weights=is_real_example)
-        #fmeasure = (2*precision*recall)/(precision+recall)
+        precision = tf.metrics.precision(labels=label_ids, predictions=predictions)
+        recall = tf.metrics.recall(labels=label_ids, predictions=predictions)
+        #fmeasure = (2.*precision*recall)/(precision+recall)
         return {
             "eval_accuracy": accuracy,
             "eval_loss": loss,
             "precision": precision,
             "recall": recall,
-         #   "fmeasure": fmeasure,
-            
-        }
+            #"report": report,
+                }
 
       eval_metrics = (metric_fn,
                       [per_example_loss, label_ids, logits, is_real_example])
@@ -775,7 +859,8 @@ def main(_):
       num_train_steps=num_train_steps,
       num_warmup_steps=num_warmup_steps,
       use_tpu=FLAGS.use_tpu,
-      use_one_hot_embeddings=FLAGS.use_tpu)
+      use_one_hot_embeddings=FLAGS.use_tpu,
+      ft=FLAGS.fine_tune_layers)
 
   # If TPU is not available, this will fall back to normal Estimator on CPU
   # or GPU.
@@ -789,7 +874,8 @@ def main(_):
 
   if FLAGS.do_train:
     train_file = os.path.join(FLAGS.output_dir, "train.tf_record")
-    file_based_convert_examples_to_features(
+    print("train_file is",train_file)
+    train_feat=file_based_convert_examples_to_features(
         train_examples, label_list, FLAGS.max_seq_length, tokenizer, train_file)
     tf.logging.info("***** Running training *****")
     tf.logging.info("  Num examples = %d", len(train_examples))
@@ -815,7 +901,7 @@ def main(_):
         eval_examples.append(PaddingInputExample())
 
     eval_file = os.path.join(FLAGS.output_dir, "eval.tf_record")
-    file_based_convert_examples_to_features(
+    eval_feat=file_based_convert_examples_to_features(
         eval_examples, label_list, FLAGS.max_seq_length, tokenizer, eval_file)
 
     tf.logging.info("***** Running evaluation *****")
@@ -849,8 +935,9 @@ def main(_):
         writer.write("%s = %s\n" % (key, str(result[key])))
 
   if FLAGS.do_predict:
-    predict_examples = processor.get_test_examples(FLAGS.data_dir)
+    predict_examples,_ = processor.get_test_examples(FLAGS.data_dir)
     num_actual_predict_examples = len(predict_examples)
+    print("num actual predict", num_actual_predict_examples)
     if FLAGS.use_tpu:
       # TPU requires a fixed batch size for all batches, therefore the number
       # of examples must be a multiple of the batch size, or else examples
@@ -871,6 +958,7 @@ def main(_):
     tf.logging.info("  Batch size = %d", FLAGS.predict_batch_size)
 
     predict_drop_remainder = True if FLAGS.use_tpu else False
+    print(predict_drop_remainder)
     predict_input_fn = file_based_input_fn_builder(
         input_file=predict_file,
         seq_length=FLAGS.max_seq_length,
@@ -883,6 +971,7 @@ def main(_):
     with tf.gfile.GFile(output_predict_file, "w") as writer:
       num_written_lines = 0
       tf.logging.info("***** Predict results *****")
+      
       for (i, prediction) in enumerate(result):
         probabilities = prediction["probabilities"]
         if i >= num_actual_predict_examples:
@@ -893,6 +982,19 @@ def main(_):
         writer.write(output_line)
         num_written_lines += 1
     assert num_written_lines == num_actual_predict_examples
+    
+#    clf = BaselineClassifier(n_classes=3)
+ #   y_pred = clf.predict(input_fn=lambda:input_fn(predict_examples,y_actual))
+  #  y_pred = np.array([p['class_ids'][0] for p in y_pred])
+
+ #   from sklearn.metrics import classification_report
+#    print(classification_report(y_actual, y_pred))
+#    output_predict_file = os.path.join(FLAGS.output_dir, "test_results.txt")
+ #   with tf.gfile.GFile(output_predict_file, "w") as writer:
+  #    tf.logging.info("***** Predict results *****")
+   #   for key in sorted(result.keys()):
+    #    tf.logging.info("  %s = %s", key, str(result[key]))
+     #   writer.write("%s = %s\n" % (key, str(result[key])))
 
 
 if __name__ == "__main__":
