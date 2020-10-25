@@ -422,6 +422,8 @@ export BERT_BASE_DIR=gs://bert_models/2018_10_18/uncased_L-12_H-768_A-12
 ```
 
 ### Sentence (and sentence-pair) classification tasks
+### Note run_classifier.py won't work on MRPC as it takes on the additional Genitive Ratio.
+### The original run_classifier.py should work with CLASS_MRPC
 
 Before running this example you must download the
 [GLUE data](https://gluebenchmark.com/tasks) by running
