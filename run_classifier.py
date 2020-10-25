@@ -231,7 +231,7 @@ class StoriesProcessor(DataProcessor):
 
   def get_test_examples(self, data_dir):
     """See base class."""
-    return self._create_test_examples(
+    return self._create_examples(
         self._read_tsv(os.path.join(data_dir, "test.tsv")), "test")
 
   def get_labels(self):
@@ -239,23 +239,27 @@ class StoriesProcessor(DataProcessor):
     return ["1", "2", "3"]
 
 
-  def _create_test_examples(self, lines, set_type):
+#  def _create_test_examples(self, lines, set_type):
     """Creates examples for the training and dev sets."""
-    examples = []
-    for (i, line) in enumerate(lines):
-      if i == 0:
-        continue
-      guid = "%s-%s" % (set_type, i)
-      text_a = tokenization.convert_to_unicode(line[3])
-      gr = [float(x) for x in ast.literal_eval(line[1])]
+ #   examples = []
+  #  for (i, line) in enumerate(lines):
+   #   if i == 0:
+    #    continue
+     # try:
+      #    guid = "%s-%s" % (set_type, i)
+       #   text_a = tokenization.convert_to_unicode(line[0])
+        #  gr = [float(x) for x in ast.literal_eval(line[1])]
           
       # set_type == "test":
-      label = "3"
+         # label = "3"
       #else:
-      actuallabel = tokenization.convert_to_unicode(line[2])
-      examples.append(
-          InputExample(guid=guid, text_a=text_a,label=label, genitive_id=gr))
-    return examples,actuallabel
+         # actuallabel = tokenization.convert_to_unicode(line[2])
+         # examples.append(
+   #       #InputExample(guid=guid, text_a=text_a,label=label, genitive_id=gr))
+     # except IndexError:
+    #      print(line)
+
+    #return examples,actuallabel
 
 
 
@@ -266,17 +270,24 @@ class StoriesProcessor(DataProcessor):
     for (i, line) in enumerate(lines):
       if i == 0:
         continue
-      guid = "%s-%s" % (set_type, i)
-      text_a = tokenization.convert_to_unicode(line[3])
-      gr = [float(x) for x in ast.literal_eval(line[1])]
+      try:
+          guid = "%s-%s" % (set_type, i)
+          text_a = tokenization.convert_to_unicode(line[0])
+#          print(line)
+          gr = [float(x) for x in ast.literal_eval(line[1])]
     
       
-      if set_type == "test":
-        label = "3"
-      else:
-        label = tokenization.convert_to_unicode(line[2])
-      examples.append(
+          if set_type == "test":
+            label = "3"
+          else:
+            label = tokenization.convert_to_unicode(line[2])
+          examples.append(
           InputExample(guid=guid, text_a=text_a, label=label, genitive_id=gr))
+      except (IndexError,ValueError):
+          print(line)
+      except:
+          continue 
+
     return examples
 
 class MrpcProcessor(DataProcessor):
@@ -564,12 +575,12 @@ def create_model(bert_config, is_training, input_ids, input_mask, segment_ids,
 
   with tf.variable_scope("loss"):
     if is_training:
-        output_layer = tf.nn.dropout(output_layer, rate=0.2)
+        output_layer = tf.nn.dropout(output_layer, keep_prob=0.8)
 
-    output_weights_gr = tf.get_variable("output_weights_gr", [3,genitiveratio.get_shape()[1]], initializer=tf.truncated_normal_initializer(stddev=0.02))
+    output_weights_gr = tf.get_variable("output_weights_gr", [4,genitiveratio.get_shape()[1]], initializer=tf.truncated_normal_initializer(stddev=0.02))
     print("output_weights_gr",output_weights_gr)
     output_bias_gr = tf.get_variable(
-      "output_bias_gr", [3], initializer=tf.zeros_initializer())
+      "output_bias_gr", [4], initializer=tf.zeros_initializer())
     print("output_biase_gr",output_bias_gr)
 
 
@@ -590,27 +601,16 @@ def create_model(bert_config, is_training, input_ids, input_mask, segment_ids,
 
 
 
-    output_weights_gr2 = tf.get_variable("output_weights_gr2", [8,logits_gr1.get_shape()[1]], initializer=tf.truncated_normal_initializer(stddev=0.02))
+    output_weights_gr2 = tf.get_variable("output_weights_gr2", [6,logits_gr1.get_shape()[1]], initializer=tf.truncated_normal_initializer(stddev=0.02))
     print("output_weights_gr2",output_weights_gr2)
     output_bias_gr2 = tf.get_variable(
-      "output_bias_gr2", [8], initializer=tf.zeros_initializer())
+      "output_bias_gr2", [6], initializer=tf.zeros_initializer())
     print("output_bias_gr2",output_bias_gr2)
   
 
-    logits_gr2a = tf.matmul(logits_gr1, output_weights_gr2, transpose_b=True)
-    logits_gr2a = tf.nn.bias_add(logits_gr2a, output_bias_gr2)
- #  print(logits_gr2)
-
-    output_weights_gr2a = tf.get_variable("output_weights_gr2a", [6,logits_gr2a.get_shape()[1]], initializer=tf.truncated_normal_initializer(stddev=0.02))
-    print("output_weights_gr2a",output_weights_gr2a)
-    output_bias_gr2a = tf.get_variable(
-      "output_bias_gr2a", [6], initializer=tf.zeros_initializer())
-    print("output_bias_gr2a",output_bias_gr2a)
-  
-
-    logits_gr2 = tf.matmul(logits_gr2a, output_weights_gr2a, transpose_b=True)
-    logits_gr2 = tf.nn.bias_add(logits_gr2, output_bias_gr2a)
-    print(logits_gr2a)
+    logits_gr2 = tf.matmul(logits_gr1, output_weights_gr2, transpose_b=True)
+    logits_gr2 = tf.nn.bias_add(logits_gr2, output_bias_gr2)
+    print(logits_gr2)
 
 
     output_weights_gr3 = tf.get_variable(
@@ -639,7 +639,6 @@ def create_model(bert_config, is_training, input_ids, input_mask, segment_ids,
     logits = tf.matmul(output_layer, output_weights, transpose_b=True)
     logits = tf.nn.bias_add(logits, output_bias)
     print("logits is",logits)
-    print(num_labels)
 
     logitsconc = tf.concat([logits, logits_gr3],-1)
     print("logitsconc is",logitsconc)
@@ -655,7 +654,7 @@ def create_model(bert_config, is_training, input_ids, input_mask, segment_ids,
     
     one_hot_labels = tf.one_hot(labels, depth=num_labels, dtype=tf.float32)
     
-    class_weights = tf.constant([[4.17,2.17,1]])
+    class_weights = tf.constant([[8.15,2.155,1]])
     per_example_loss = -tf.reduce_sum(one_hot_labels * log_probs, axis=-1)
 #    print("*** per_example_loss ***", per_example_loss)    
     per_example_lw = tf.reduce_sum(class_weights * one_hot_labels, axis=1) 
@@ -835,7 +834,6 @@ def main(_):
   processor = processors[task_name]()
 
   label_list = processor.get_labels()
-  print("**************** LABEL LIST IS **********", label_list)
 
   tokenizer = tokenization.FullTokenizer(
       vocab_file=FLAGS.vocab_file, do_lower_case=FLAGS.do_lower_case)
@@ -951,8 +949,9 @@ def main(_):
         tf.logging.info("  %s = %s", key, str(result[key]))
         writer.write("%s = %s\n" % (key, str(result[key])))
 
+
   if FLAGS.do_predict:
-    predict_examples,_ = processor.get_test_examples(FLAGS.data_dir)
+    predict_examples  = processor.get_test_examples(FLAGS.data_dir)
     num_actual_predict_examples = len(predict_examples)
     print("num actual predict", num_actual_predict_examples)
     if FLAGS.use_tpu:
@@ -1000,6 +999,9 @@ def main(_):
         num_written_lines += 1
     assert num_written_lines == num_actual_predict_examples
     
+
+
+   
 #    clf = BaselineClassifier(n_classes=3)
  #   y_pred = clf.predict(input_fn=lambda:input_fn(predict_examples,y_actual))
   #  y_pred = np.array([p['class_ids'][0] for p in y_pred])
