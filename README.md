@@ -482,15 +482,18 @@ input folder. Output will be created in file called test_results.tsv in the
 output folder. Each line will contain output for each sample, columns are the
 class probabilities.
 
+## Prediction for Stories Processor
+
 ```shell
 export BERT_BASE_DIR=/path/to/bert/uncased_L-12_H-768_A-12
 export GLUE_DIR=/path/to/glue
 export TRAINED_CLASSIFIER=/path/to/fine/tuned/classifier
+export DATA_DIR=/path/for/data
 
 python run_classifier.py \
   --task_name=StoriesProcessor \
   --do_predict=true \
-  --data_dir=**Insert_Data_Dir \
+  --data_dir=$DATA_DIR \
   --vocab_file=$BERT_BASE_DIR/vocab.txt \
   --bert_config_file=$BERT_BASE_DIR/bert_config.json \
   --init_checkpoint=$TRAINED_CLASSIFIER \
